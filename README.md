@@ -4,25 +4,16 @@
 
 ```rust
 fn main() {
-  let resource = std::sync::Arc::new(11);
-  let semaphore = bau::Semaphore::new(10);
+  use std::sync::*;
+  use bau::*;
 
-  let r = resource.clone();
-  let s = semaphore.clone();
-
-  std::thread::spawn(move || {
-    let _: i32 = semaphore
-      .wait(|| {
-        *resource + *resource // Critical section
-      })
-      .unwrap(); // Call to signal upon exit
-  });
+  let resource = 11;
+  let semaphore = Arc::new(Semaphore::new(10, resource));
 
   std::thread::spawn(move || {
-    let _: i32 = {
-      let _guard = s.wait_guard();
-      *r + *r // Critical section
-    }; // Call to signal upon drop
+    let resource = semaphore.wait().unwrap();
+    let _: i32 = *resource + *resource; // Critical section
+    // Call to signal upon exit
   });
 
   println!("BAU BAU!");

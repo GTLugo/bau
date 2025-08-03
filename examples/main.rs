@@ -1,6 +1,9 @@
 fn main() {
+  use std::sync::*;
+  use bau::*;
+
   let resource = 11;
-  let semaphore = bau::Semaphore::new(10, resource);
+  let semaphore = Arc::new(Semaphore::new(10, resource));
 
   std::thread::spawn(move || {
     let resource = semaphore.wait().unwrap();

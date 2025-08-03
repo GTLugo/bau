@@ -1,8 +1,3 @@
-# `win64`
-
-## A fun little signaling crate
-
-```rust
 fn main() {
   let semaphore = bau::Semaphore::new(10);
   let s = semaphore.clone();
@@ -24,8 +19,3 @@ fn main() {
 
   println!("BAU BAU!");
 }
-
-```
-
-> [!NOTE]
-> No AI-generated code.

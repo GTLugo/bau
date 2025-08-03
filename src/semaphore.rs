@@ -21,17 +21,34 @@ impl Semaphore {
     }
   }
 
-  pub fn signal(&self) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
+  pub fn wait(&self, f: impl FnOnce()) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
+    let _guard = self.wait_guard()?;
+    f();
+    Ok(())
+  }
+
+  pub fn wait_guard(&self) -> Result<SemaphoreGuard, PoisonError<MutexGuard<'_, usize>>> {
+    let var = &self.inner.var;
+    let mut count = var.wait_while(self.inner.count.lock().unwrap(), |count| *count == 0)?;
+    *count = (*count).saturating_sub(1);
+    Ok(SemaphoreGuard { semaphore: self })
+  }
+
+  fn signal(&self) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
     let mut count = self.inner.count.lock()?;
     *count += 1;
     self.inner.var.notify_all();
     Ok(())
   }
+}
 
-  pub fn wait(&self) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
-    let var = &self.inner.var;
-    let mut count = var.wait_while(self.inner.count.lock().unwrap(), |count| *count == 0)?;
-    *count = (*count).saturating_sub(1);
-    Ok(())
+#[must_use = "Semaphore will be signaled when the guard is dropped"]
+pub struct SemaphoreGuard<'s> {
+  semaphore: &'s Semaphore,
+}
+
+impl<'s> Drop for SemaphoreGuard<'s> {
+  fn drop(&mut self) {
+    self.semaphore.signal().unwrap();
   }
 }

@@ -21,10 +21,9 @@ impl Semaphore {
     }
   }
 
-  pub fn wait(&self, f: impl FnOnce()) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
+  pub fn wait<T>(&self, f: impl FnOnce() -> T) -> Result<T, PoisonError<MutexGuard<'_, usize>>> {
     let _guard = self.wait_guard()?;
-    f();
-    Ok(())
+    Ok(f())
   }
 
   pub fn wait_guard(&self) -> Result<SemaphoreGuard, PoisonError<MutexGuard<'_, usize>>> {

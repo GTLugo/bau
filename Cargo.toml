@@ -1,0 +1,14 @@
+[package]
+name         = "bau"
+version      = "0.1.0"
+edition      = "2024"
+rust-version = "1.88"
+description  = "Fun, simple signaling library"
+readme       = "README.md"
+authors      = ["Gabriel A. Lugo-Maldonado <gabe@lugo.studio>"]
+license      = "MIT OR Apache-2.0"
+keywords     = ["signal", "sync", "semaphore", "bau"]
+categories   = ["concurrency"]
+repository   = "https://github.com/GTLugo/bau"
+
+[dependencies]

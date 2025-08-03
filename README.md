@@ -8,7 +8,7 @@ fn main() {
   use bau::*;
 
   let resource = 11;
-  let semaphore = Arc::new(Semaphore::new(10, resource));
+  let semaphore = Arc::new(Semaphore::new([resource; 10]));
 
   std::thread::spawn(move || {
     let resource = semaphore.wait().unwrap();

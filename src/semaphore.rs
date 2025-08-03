@@ -5,60 +5,66 @@ use std::{
 };
 
 #[derive(Debug)]
-pub struct Semaphore<T> {
-  data: UnsafeCell<T>,
+pub struct Semaphore<const RESOURCE_COUNT: usize, T> {
+  data: UnsafeCell<[T; RESOURCE_COUNT]>,
   count: Mutex<usize>,
   var: Condvar,
 }
 
-unsafe impl<T: Send> Send for Semaphore<T> {}
-unsafe impl<T: Sync> Sync for Semaphore<T> {}
+unsafe impl<const RESOURCE_COUNT: usize, T: Send> Send for Semaphore<RESOURCE_COUNT, T> {}
+unsafe impl<const RESOURCE_COUNT: usize, T: Sync> Sync for Semaphore<RESOURCE_COUNT, T> {}
 
-impl<T> Semaphore<T> {
-  pub fn new(count: usize, data: T) -> Self {
+impl<const RESOURCE_COUNT: usize, T> Semaphore<RESOURCE_COUNT, T> {
+  pub fn new(resources: [T; RESOURCE_COUNT]) -> Self {
     Self {
-      data: UnsafeCell::new(data),
-      count: Mutex::new(count),
+      data: UnsafeCell::new(resources),
+      count: Mutex::new(RESOURCE_COUNT),
       var: Condvar::new(),
     }
   }
 
-  pub fn wait(&self) -> Result<SemaphoreGuard<T>, PoisonError<MutexGuard<'_, usize>>> {
+  pub fn wait(&self) -> Result<SemaphoreGuard<RESOURCE_COUNT, T>, PoisonError<MutexGuard<'_, usize>>> {
     let var = &self.var;
     let mut count = var.wait_while(self.count.lock().unwrap(), |count| *count == 0)?;
     *count = (*count).saturating_sub(1);
-    Ok(SemaphoreGuard { semaphore: self })
+    let resources = unsafe { &mut *self.data.get() };
+    let next = &mut resources[*count];
+    Ok(SemaphoreGuard {
+      semaphore: self,
+      resource: next,
+    })
   }
 
   fn signal(&self) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
     let mut count = self.count.lock()?;
-    *count += 1;
+    *count = (*count).saturating_add(1);
     self.var.notify_all();
     Ok(())
   }
 }
 
 #[must_use = "Semaphore will be signaled when the guard is dropped"]
-pub struct SemaphoreGuard<'s, T> {
-  semaphore: &'s Semaphore<T>,
+pub struct SemaphoreGuard<'s, const RESOURCE_COUNT: usize, T> {
+  semaphore: &'s Semaphore<RESOURCE_COUNT, T>,
+  resource: &'s mut T,
 }
 
-impl<'s, T> Drop for SemaphoreGuard<'s, T> {
+impl<'s, const RESOURCE_COUNT: usize, T> Drop for SemaphoreGuard<'s, RESOURCE_COUNT, T> {
   fn drop(&mut self) {
     self.semaphore.signal().unwrap();
   }
 }
 
-impl<'s, T> Deref for SemaphoreGuard<'s, T> {
+impl<'s, const RESOURCE_COUNT: usize, T> Deref for SemaphoreGuard<'s, RESOURCE_COUNT, T> {
   type Target = T;
 
   fn deref(&self) -> &Self::Target {
-    unsafe { &*self.semaphore.data.get() }
+    self.resource
   }
 }
 
-impl<'s, T> DerefMut for SemaphoreGuard<'s, T> {
+impl<'s, const RESOURCE_COUNT: usize, T> DerefMut for SemaphoreGuard<'s, RESOURCE_COUNT, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
-    unsafe { &mut *self.semaphore.data.get() }
+    self.resource
   }
 }

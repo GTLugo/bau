@@ -1,15 +1,24 @@
 fn main() {
-  use std::sync::*;
   use bau::*;
+  use std::{sync::Arc, thread, time::Duration};
 
-  let resource = 11;
-  let semaphore = Arc::new(Semaphore::new([resource; 10]));
+  let resources = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9];
+  let semaphore = Arc::new(Semaphore::new(resources));
 
-  std::thread::spawn(move || {
-    let resource = semaphore.wait().unwrap();
-    let _: i32 = *resource + *resource; // Critical section
-    // Call to signal upon exit
-  });
+  (0..semaphore.count() * 10)
+    .map(|_| {
+      let s = semaphore.clone();
+      thread::spawn(move || {
+        let res = s.wait().unwrap();
 
-  println!("BAU BAU!");
+        // Critical section
+        let _: i32 = dbg!(*res);
+        thread::sleep(Duration::from_millis(rand::random_range(0..100)));
+
+        // Call to signal upon exit
+      })
+    })
+    .collect::<Vec<thread::JoinHandle<()>>>()
+    .into_iter()
+    .for_each(|h| h.join().unwrap());
 }

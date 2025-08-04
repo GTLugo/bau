@@ -1,11 +1,20 @@
 use std::{
   cell::UnsafeCell,
+  collections::HashMap,
   ops::{Deref, DerefMut},
   sync::{Condvar, Mutex, MutexGuard, PoisonError},
 };
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum State {
+  Acquired,
+  #[default]
+  Free,
+}
+
 #[derive(Debug)]
 pub struct Semaphore<const RESOURCE_COUNT: usize, T> {
+  states: UnsafeCell<HashMap<usize, State>>,
   data: UnsafeCell<[T; RESOURCE_COUNT]>,
   count: Mutex<usize>,
   var: Condvar,
@@ -17,28 +26,39 @@ unsafe impl<const RESOURCE_COUNT: usize, T: Sync> Sync for Semaphore<RESOURCE_CO
 impl<const RESOURCE_COUNT: usize, T> Semaphore<RESOURCE_COUNT, T> {
   pub fn new(resources: [T; RESOURCE_COUNT]) -> Self {
     Self {
+      states: UnsafeCell::new((0..RESOURCE_COUNT).map(|x| (x, State::Free)).collect()),
       data: UnsafeCell::new(resources),
       count: Mutex::new(RESOURCE_COUNT),
       var: Condvar::new(),
     }
   }
 
+  pub fn count(&self) -> usize {
+    unsafe { &*self.data.get() }.len()
+  }
+
   pub fn wait(&self) -> Result<SemaphoreGuard<RESOURCE_COUNT, T>, PoisonError<MutexGuard<'_, usize>>> {
     let var = &self.var;
-    let mut count = var.wait_while(self.count.lock().unwrap(), |count| *count == 0)?;
+    let mut count = var.wait_while(self.count.lock()?, |count| *count == 0)?;
     *count = (*count).saturating_sub(1);
-    let resources = unsafe { &mut *self.data.get() };
-    let next = &mut resources[*count];
+    let data = unsafe { &mut *self.data.get() };
+    let states = unsafe { &mut *self.states.get() };
+    let index = *states.iter().find(|e| e.1 == &State::Free).unwrap().0;
+    *states.get_mut(&index).unwrap() = State::Acquired;
+    let next = &mut data[index];
     Ok(SemaphoreGuard {
       semaphore: self,
       resource: next,
+      index,
     })
   }
 
-  fn signal(&self) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
+  fn signal(&self, index: usize) -> Result<(), PoisonError<MutexGuard<'_, usize>>> {
     let mut count = self.count.lock()?;
     *count = (*count).saturating_add(1);
-    self.var.notify_all();
+    let states = unsafe { &mut *self.states.get() };
+    *states.get_mut(&index).unwrap() = State::Free;
+    self.var.notify_one();
     Ok(())
   }
 }
@@ -47,11 +67,12 @@ impl<const RESOURCE_COUNT: usize, T> Semaphore<RESOURCE_COUNT, T> {
 pub struct SemaphoreGuard<'s, const RESOURCE_COUNT: usize, T> {
   semaphore: &'s Semaphore<RESOURCE_COUNT, T>,
   resource: &'s mut T,
+  index: usize,
 }
 
 impl<'s, const RESOURCE_COUNT: usize, T> Drop for SemaphoreGuard<'s, RESOURCE_COUNT, T> {
   fn drop(&mut self) {
-    self.semaphore.signal().unwrap();
+    self.semaphore.signal(self.index).unwrap();
   }
 }
 

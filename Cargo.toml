@@ -1,6 +1,6 @@
 [package]
 name         = "bau"
-version      = "0.6.0"
+version      = "0.7.0"
 edition      = "2024"
 rust-version = "1.88"
 description  = "Fun, simple signaling library"
@@ -12,3 +12,6 @@ categories   = ["concurrency"]
 repository   = "https://github.com/GTLugo/bau"
 
 [dependencies]
+
+[dev-dependencies]
+rand = "0.9.2"
